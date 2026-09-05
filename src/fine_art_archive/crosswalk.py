@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fine_art_archive import sidecar
-from fine_art_archive.api.store import artist_qid
+from fine_art_archive.identity.artist_qid import artist_qid
 
 WIKIDATA_ENTITY = "https://www.wikidata.org/entity/"
 LINKED_ART_CONTEXT = "https://linked.art/ns/v1/linked-art.json"
