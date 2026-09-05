@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from fine_art_archive.identity import build_alias_table, resolve_artist
+from fine_art_archive.identity.artist_qid import artist_qid
 
 from .config import DEFAULT_ART_WORKS_ROOT, REPO_ROOT, env_path
 
@@ -606,30 +607,6 @@ def invalidate_acquisitions_cache() -> None:
 
 
 _artist_qid_cache: dict[str, Any] = {"sig": None, "qids": frozenset()}
-
-
-def artist_qid(meta: dict) -> str | None:
-    """The artist Q-ID a sidecar carries, or None when it carries none.
-
-    Prefers the resolver's canonical Q-ID and falls back to the raw one, so an
-    artist whose name is spelled two ways still resolves to a single Q-ID.
-
-    Shared by `known_artist_qids()` and `scripts/build_manifest.py` so the
-    screener's idea of which Q-ID a work carries cannot drift from the one the
-    manifest publishes to the UI.
-    """
-    artist = meta.get("artist")
-    if not isinstance(artist, dict):
-        return None
-    canonical = artist.get("canonical")
-    canonical_qid = canonical.get("wikidata_q") if isinstance(canonical, dict) else None
-    raw_qid = artist.get("wikidata_q")
-    qid = (
-        canonical_qid
-        if isinstance(canonical_qid, str) and _QID_RE.fullmatch(canonical_qid)
-        else raw_qid
-    )
-    return qid if isinstance(qid, str) and _QID_RE.fullmatch(qid) else None
 
 
 def known_artist_qids() -> frozenset[str]:

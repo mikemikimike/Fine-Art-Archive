@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fine_art_archive import sidecar
+from fine_art_archive.identity.artist_qid import artist_qid
 
 WIKIDATA_ENTITY = "https://www.wikidata.org/entity/"
 LINKED_ART_CONTEXT = "https://linked.art/ns/v1/linked-art.json"
@@ -102,7 +103,6 @@ def to_linked_art(meta: dict[str, Any]) -> dict[str, Any]:
     """Project a sidecar into a minimal Linked Art JSON-LD HumanMadeObject."""
     title = _clean(meta.get("title")) or "Untitled"
     work_id = _clean(meta.get("work_id")) or "unknown"
-    artist = meta.get("artist") or {}
     stable = meta.get("stable_identifiers") or {}
     holder = meta.get("holder") or {}
 
@@ -114,7 +114,7 @@ def to_linked_art(meta: dict[str, Any]) -> dict[str, Any]:
         "identified_by": [_linked_art_name(title)],
         "produced_by": {
             "type": "Production",
-            "carried_out_by": [_linked_art_actor(_artist_name(meta), artist.get("wikidata_q"))],
+            "carried_out_by": [_linked_art_actor(_artist_name(meta), artist_qid(meta))],
         },
     }
 
