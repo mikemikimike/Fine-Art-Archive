@@ -673,6 +673,58 @@ def test_variant_upgrade_decision_rejects_unknown_work_without_append(
     assert "not a real work" not in lines[0]
 
 
+@pytest.fixture
+def variant_candidate_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from PIL import Image
+
+    candidate = tmp_path / "candidate.png"
+    Image.new("RGB", (1000, 500), "gray").save(candidate)
+    candidates_csv = tmp_path / "variant_upgrade_candidates.csv"
+    candidates_csv.write_text(
+        f"existing_wid,candidate_path\ntest-wid,{candidate}\n", encoding="utf-8"
+    )
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(api_main, "VARIANT_UPGRADE_CSV", candidates_csv)
+    monkeypatch.setattr(api_main, "VARIANT_CANDIDATE_ROOTS", (tmp_path,))
+    monkeypatch.setattr(api_main, "IMAGE_CACHE_DIR", cache)
+    return cache
+
+
+@pytest.mark.parametrize("max_pixels", [-1, 0, 10, 63, 12289, 20000, 100000000])
+def test_variant_candidate_image_rejects_out_of_bounds_max(
+    client: TestClient, variant_candidate_cache: Path, max_pixels: int
+) -> None:
+    response = client.get("/variant_upgrades/test-wid/candidate_image", params={"max": max_pixels})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "max"]
+    assert not variant_candidate_cache.exists()
+
+
+@pytest.mark.parametrize(
+    ("max_pixels", "expected_size"),
+    [(None, (900, 450)), (64, (64, 32)), (900, (900, 450)), (12288, (1000, 500))],
+)
+def test_variant_candidate_image_serves_default_and_valid_bounds(
+    client: TestClient,
+    variant_candidate_cache: Path,
+    max_pixels: int | None,
+    expected_size: tuple[int, int],
+) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    params = {} if max_pixels is None else {"max": max_pixels}
+    response = client.get("/variant_upgrades/test-wid/candidate_image", params=params)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    with Image.open(BytesIO(response.content)) as preview:
+        assert preview.size == expected_size
+    assert len(list(variant_candidate_cache.glob("*.jpg"))) == 1
+
+
 def test_modality_image_serves_and_404s(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
