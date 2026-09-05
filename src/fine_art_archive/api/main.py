@@ -1714,7 +1714,10 @@ VARIANT_CANDIDATE_ROOTS = (
 
 
 @app.get("/variant_upgrades/{existing_wid}/candidate_image")
-def variant_candidate_image(existing_wid: str, max: int = 900) -> Response:
+def variant_candidate_image(
+    existing_wid: str,
+    max: int = Query(900, ge=64, le=12288, description="Longest side in pixels"),
+) -> Response:
     """The proposed replacement file, so the swap can be judged by eye.
 
     The upgrade decision is "is this copy better than the one I hold", and the
