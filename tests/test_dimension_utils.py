@@ -39,6 +39,29 @@ class TestParseDimensionPair:
         assert parse_dimension_pair("oil on canvas, 40.5 cm x 32.5 cm") == (32.5, 40.5)
         assert parse_dimension_pair("55.5 cm x 47 cm (1)") == (47.0, 55.5)
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("535 x 463 x 52 mm", (46.3, 53.5)),
+            ("53.5 x 46.3 x 5.2 cm", (46.3, 53.5)),
+            ("10 x 20 x 3 in", (25.4, 50.8)),
+            ("10 x 20 x 3 inch", (25.4, 50.8)),
+            ("10 x 20 x 3 inches", (25.4, 50.8)),
+            ("0.535 x 0.463 x 0.052 m", (46.3, 53.5)),
+            ("framed: 535 × 463 × 52 MM (overall)", (46.3, 53.5)),
+            ("53,5 × 46,3 × 5,2 cm", (46.3, 53.5)),
+            ("10 inches x 20 inches x 3 inches", (25.4, 50.8)),
+            ("535 mm x 463 x 52", (46.3, 53.5)),
+            ("535 x 463 mm x 52", (46.3, 53.5)),
+            ("53.5 x 46.3 x 5.2", (46.3, 53.5)),
+        ],
+    )
+    def test_3d_dimensions_use_trailing_unit(
+        self, value: str, expected: tuple[float, float]
+    ) -> None:
+        # Depth supplies a shared unit, but is not one of the compared sides.
+        assert parse_dimension_pair(value) == pytest.approx(expected)
+
     def test_order_independent(self) -> None:
         assert parse_dimension_pair("46.3 x 53.5 cm") == parse_dimension_pair("53.5 x 46.3 cm")
 
@@ -48,6 +71,19 @@ class TestParseDimensionPair:
 
 
 class TestDimCompat:
+    @pytest.mark.parametrize(
+        ("flat", "physical"),
+        [
+            ("53.5 x 46.3 cm", "535 x 463 x 52 mm"),
+            ("46.3 x 53.5 cm", "53.5 x 46.3 x 5.2 cm"),
+            ("25.4 x 50.8 cm", "10 x 20 x 3 in"),
+        ],
+    )
+    def test_3d_dimensions_match_2d_equivalent(self, flat: str, physical: str) -> None:
+        status, difference = dim_compat(flat, physical)
+        assert status == "match"
+        assert difference == pytest.approx(0.0)
+
     def test_match_within_tolerance(self) -> None:
         assert dim_compat("53.5 x 46.3 cm", "53.5 x 46.3 cm")[0] == "match"
         # Catalogue rounding.
