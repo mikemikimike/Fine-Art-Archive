@@ -22,9 +22,11 @@ import re
 DimCompat = str  # "match" | "mismatch" | "absent"
 
 _DIM_NUM = r"\d+(?:[.,]\d+)?"
+_DIM_UNIT = r"cm|mm|m|inches|inch|in"
 DIMENSION_PAIR_TOKEN = re.compile(
-    rf"({_DIM_NUM})\s*(cm|mm|m|in|inch|inches)?\s*[×x]\s*"
-    rf"({_DIM_NUM})\s*(cm|mm|m|in|inch|inches)?",
+    rf"({_DIM_NUM})\s*({_DIM_UNIT})?\s*[×x]\s*"
+    rf"({_DIM_NUM})\s*({_DIM_UNIT})?"
+    rf"(?:\s*[×x]\s*{_DIM_NUM}\s*({_DIM_UNIT})?)?",
     re.IGNORECASE,
 )
 
@@ -46,11 +48,13 @@ def parse_dimension_pair(value: str) -> tuple[float, float] | None:
         "53.5 x 46.3 cm"      "53.5 × 46.3 cm"       "40.5 cm x 32.5 cm"
         "73,5 x 92,3 cm"      "26 x 37.5 in"         "62 x 47 inches"
         "oil on canvas, 40.5 cm x 32.5 cm"           "55.5 cm x 47 cm (1)"
+        "535 x 463 x 52 mm"                        "10 x 20 x 3 in"
 
     A leading medium clause and a trailing parenthetical are ignored. European
     comma decimals are accepted. The pair is sorted ascending so that a work
     catalogued ``53.5 x 46.3`` compares equal to the same work catalogued
-    ``46.3 x 53.5``.
+    ``46.3 x 53.5``. An optional third dimension supplies the trailing unit
+    but its depth is excluded from the returned height/width pair.
 
     Returns ``None`` when no dimension-shaped token is present, or when a
     parsed value is non-finite or non-positive.
@@ -61,17 +65,17 @@ def parse_dimension_pair(value: str) -> tuple[float, float] | None:
     if match is None:
         return None
 
-    first_raw, first_unit, second_raw, second_unit = match.groups()
+    first_raw, first_unit, second_raw, second_unit, depth_unit = match.groups()
     try:
         first = float(first_raw.replace(",", "."))
         second = float(second_raw.replace(",", "."))
     except ValueError:
         return None
 
-    # The trailing unit wins when present: "N x N cm" states the unit once, at
+    # The trailing unit wins: "N x N cm" or "N x N x N mm" states it once, at
     # the end. Fall back to a leading unit, then to cm (the dominant unit in
     # this inventory).
-    unit = (second_unit or first_unit or "cm").lower()
+    unit = (depth_unit or second_unit or first_unit or "cm").lower()
     factor = _TO_CM.get(unit, 1.0)
     first *= factor
     second *= factor
