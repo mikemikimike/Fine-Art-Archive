@@ -139,6 +139,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.artist_qid and not args.artist_name:
         parser.error("provide --artist-qid and/or --artist-name")
+    if args.missing_only and (args.staging_dir is None or not args.staging_dir.is_dir()):
+        parser.error(
+            f"--missing-only requires an existing sidecar directory; got {args.staging_dir!s}. "
+            "Set --staging-dir explicitly or configure FAA_WORKS_DIR, then FAA_STAGING_DIR "
+            "(otherwise the canonical archive is used)."
+        )
 
     works = gather(args.artist_qid, args.artist_name)
     if args.missing_only:

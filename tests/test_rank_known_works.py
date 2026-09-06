@@ -107,6 +107,37 @@ def test_missing_only_resolves_sidecar_root(root_source, monkeypatch, tmp_path, 
     assert "3 works" in output
 
 
+@pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
+@pytest.mark.parametrize("root_kind", ["missing", "file"])
+def test_missing_only_rejects_unavailable_root_before_fetch(
+    explicit, root_kind, monkeypatch, tmp_path, capsys
+) -> None:
+    """Unavailable archives must not turn every remote work into an acquisition candidate."""
+    root = tmp_path / "unavailable"
+    if root_kind == "file":
+        root.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("FAA_WORKS_DIR", str(root))
+    monkeypatch.delenv("FAA_STAGING_DIR", raising=False)
+
+    def unexpected_fetch(*args):
+        pytest.fail("invalid archive should be rejected before any remote fetch")
+
+    monkeypatch.setattr(cli, "gather", unexpected_fetch)
+    args = ["--artist-qid", "Q5582", "--missing-only"]
+    if explicit:
+        args.extend(["--staging-dir", str(root)])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(args)
+    assert exc.value.code == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert str(root) in output.err
+    assert "--missing-only requires an existing sidecar directory" in output.err
+    assert "--staging-dir" in output.err
+    assert "FAA_WORKS_DIR, then FAA_STAGING_DIR" in output.err
+
+
 def test_load_held_reads_qids_and_titles(tmp_path) -> None:
     import json
 
