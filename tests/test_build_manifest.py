@@ -203,6 +203,45 @@ def test_row_values_come_from_the_sidecar(works: Path, tmp_path: Path) -> None:
     assert leytens["n_variants"] == "0"
 
 
+@pytest.mark.parametrize(
+    ("dates", "expected"),
+    [
+        ({"year": None, "year_min": 1563}, "1563"),
+        ({"year_min": 1565, "year_max": 1568}, "1565"),
+        ({"year": " ", "year_min": 1563}, "1563"),
+        ({"year": 1563, "year_min": 1560}, "1563"),
+        ({"year": " 1563 ", "year_min": 1560}, "1563"),
+        ({"year": 0, "year_min": 1560}, "0"),
+        ({"year": None, "year_min": None}, ""),
+        ({"year_max": 1568}, ""),
+    ],
+)
+def test_row_year_falls_back_to_year_min(dates: dict, expected: str) -> None:
+    meta = {"title": "Tower of Babel", **dates}
+    assert build_manifest._row("test-wid", meta)["year"] == expected
+    assert meta == {"title": "Tower of Babel", **dates}
+
+
+def test_approximate_year_reaches_manifest_consumer(
+    works: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolated_store: None
+) -> None:
+    work_id = "a1a1a11-winter-landscape-leytens"
+    sidecar = works / work_id / "meta.json"
+    meta = json.loads(sidecar.read_text(encoding="utf-8"))
+    meta.update(year=None, year_min=1565, year_max=1568)
+    sidecar.write_text(json.dumps(meta), encoding="utf-8")
+    original = sidecar.read_bytes()
+    manifest = tmp_path / "manifest.csv"
+
+    assert main(["--works-root", str(works), "--out", str(manifest)]) == 0
+    assert next(row for row in _read(manifest) if row["work_id"] == work_id)["year"] == "1565"
+    monkeypatch.setattr(store, "MANIFEST_CSV", manifest)
+    row = store.get_manifest_row(work_id)
+    assert row is not None
+    assert row["year"] == "1565"
+    assert sidecar.read_bytes() == original
+
+
 def test_unreadable_sidecar_is_skipped_and_named_not_fatal(
     works: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
