@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
+import pytest
+from scripts import _paths
 from scripts import rank_known_works as cli
 
 from fine_art_archive.known_works.fetchers import KnownWork
@@ -71,6 +75,36 @@ def test_is_held_matches_qid_and_title() -> None:
     assert not cli.is_held(
         _kw("Brand New", source_ids={"wikidata": "Q999"}), held_qids, held_titles
     )
+
+
+@pytest.mark.parametrize("root_source", ["works", "staging", "both", "canonical", "explicit"])
+def test_missing_only_resolves_sidecar_root(root_source, monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.delenv("FAA_WORKS_DIR", raising=False)
+    monkeypatch.delenv("FAA_STAGING_DIR", raising=False)
+    canonical = tmp_path / "canonical"
+    monkeypatch.setattr(_paths, "DEFAULT_ART_WORKS_ROOT", canonical)
+    roots = {name: tmp_path / name for name in ["works", "staging", "canonical", "explicit"]}
+    for name, root in roots.items():
+        root.mkdir()
+        (root / "meta.json").write_text(json.dumps({"title": f"Held in {name}"}), encoding="utf-8")
+
+    if root_source in {"works", "both", "explicit"}:
+        monkeypatch.setenv("FAA_WORKS_DIR", str(roots["works"]))
+    if root_source in {"staging", "both", "explicit"}:
+        monkeypatch.setenv("FAA_STAGING_DIR", str(roots["staging"]))
+    monkeypatch.setattr(
+        cli, "fetch_wikidata_sparql", lambda q: [_kw(f"Held in {name}") for name in roots]
+    )
+    args = ["--artist-qid", "Q5582", "--missing-only"]
+    if root_source == "explicit":
+        args.extend(["--staging-dir", str(roots["explicit"])])
+
+    assert cli.main(args) == 0
+    output = capsys.readouterr().out
+    selected = "works" if root_source == "both" else root_source
+    for name in roots:
+        assert (f"Held in {name}" in output) == (name != selected)
+    assert "3 works" in output
 
 
 def test_load_held_reads_qids_and_titles(tmp_path) -> None:
