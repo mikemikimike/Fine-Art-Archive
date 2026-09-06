@@ -117,3 +117,59 @@ def test_filename_backfill_migration_marks_present_fields_without_overwriting():
     assert meta["medium"] == original_medium
     assert meta["category"] == original_category
     assert meta["dimensions_original"] == original_dimensions
+
+
+@pytest.mark.parametrize(
+    ("artist", "expected"),
+    [
+        ({"name": "Vermeer", "canonical": {"wikidata_q": "Q41264"}}, "Q41264"),
+        ({"wikidata_q": "Q41264"}, "Q41264"),
+        ({"wikidata_q": "Q41264", "canonical": {"wikidata_q": "Q123"}}, "Q41264"),
+        ({"wikidata_q": None, "canonical": {"wikidata_q": "Q41264"}}, "Q41264"),
+        ({"wikidata_q": "", "canonical": {"wikidata_q": "Q41264"}}, "Q41264"),
+        ({"name": "Vermeer"}, None),
+        ({"canonical": {}}, None),
+        ({"canonical": None}, None),
+        ({"canonical": "Vermeer"}, None),
+        ({"canonical": []}, None),
+        (None, None),
+        ("Vermeer", None),
+    ],
+)
+def test_artist_qid_field_value_uses_canonical_fallback(artist, expected):
+    meta = {"artist": artist}
+    before = deepcopy(meta)
+
+    assert provenance._field_value(meta, "artist_qid") == expected
+    assert meta == before
+
+
+def test_completeness_conflict_keeps_canonical_artist_qid_without_mutation():
+    meta = deepcopy(MINIMAL_VALID)
+    meta["artist"]["canonical"] = {"wikidata_q": "Q173223"}
+    provenance.set(
+        meta,
+        "artist_qid",
+        "conflicting",
+        "museum_catalog",
+        note='Higher-tier source replaced lower-tier existing value "Q123".',
+    )
+    before = deepcopy(meta)
+
+    report = provenance.completeness_report([meta])
+
+    assert report.total_works == 1
+    artist_row = next(row for row in report.fields if row.field == "artist_qid")
+    assert artist_row.count("conflicting") == 1
+    assert report.conflicts == (
+        provenance.Conflict(
+            work_id=meta["work_id"],
+            field="artist_qid",
+            kept_value="Q173223",
+            kept_source="museum_catalog",
+            losing_value="Q123",
+            losing_source=None,
+            note=meta["field_provenance"]["artist_qid"]["note"],
+        ),
+    )
+    assert meta == before
