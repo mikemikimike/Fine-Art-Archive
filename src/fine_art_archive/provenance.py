@@ -212,7 +212,13 @@ def _conflict(
 def _field_value(sidecar: Mapping[str, Any], field: str) -> Any:
     if field == "artist_qid":
         artist = sidecar.get("artist")
-        return artist.get("wikidata_q") if isinstance(artist, Mapping) else None
+        if not isinstance(artist, Mapping):
+            return None
+        raw_qid = artist.get("wikidata_q")
+        if raw_qid:
+            return raw_qid
+        canonical = artist.get("canonical")
+        return canonical.get("wikidata_q") if isinstance(canonical, Mapping) else None
     return sidecar.get(field)
 
 
