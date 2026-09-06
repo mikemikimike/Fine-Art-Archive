@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
+import pytest
+from scripts import _paths
 from scripts import rank_known_works as cli
 
 from fine_art_archive.known_works.fetchers import KnownWork
@@ -71,6 +75,67 @@ def test_is_held_matches_qid_and_title() -> None:
     assert not cli.is_held(
         _kw("Brand New", source_ids={"wikidata": "Q999"}), held_qids, held_titles
     )
+
+
+@pytest.mark.parametrize("root_source", ["works", "staging", "both", "canonical", "explicit"])
+def test_missing_only_resolves_sidecar_root(root_source, monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.delenv("FAA_WORKS_DIR", raising=False)
+    monkeypatch.delenv("FAA_STAGING_DIR", raising=False)
+    canonical = tmp_path / "canonical"
+    monkeypatch.setattr(_paths, "DEFAULT_ART_WORKS_ROOT", canonical)
+    roots = {name: tmp_path / name for name in ["works", "staging", "canonical", "explicit"]}
+    for name, root in roots.items():
+        root.mkdir()
+        (root / "meta.json").write_text(json.dumps({"title": f"Held in {name}"}), encoding="utf-8")
+
+    if root_source in {"works", "both", "explicit"}:
+        monkeypatch.setenv("FAA_WORKS_DIR", str(roots["works"]))
+    if root_source in {"staging", "both", "explicit"}:
+        monkeypatch.setenv("FAA_STAGING_DIR", str(roots["staging"]))
+    monkeypatch.setattr(
+        cli, "fetch_wikidata_sparql", lambda q: [_kw(f"Held in {name}") for name in roots]
+    )
+    args = ["--artist-qid", "Q5582", "--missing-only"]
+    if root_source == "explicit":
+        args.extend(["--staging-dir", str(roots["explicit"])])
+
+    assert cli.main(args) == 0
+    output = capsys.readouterr().out
+    selected = "works" if root_source == "both" else root_source
+    for name in roots:
+        assert (f"Held in {name}" in output) == (name != selected)
+    assert "3 works" in output
+
+
+@pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
+@pytest.mark.parametrize("root_kind", ["missing", "file"])
+def test_missing_only_rejects_unavailable_root_before_fetch(
+    explicit, root_kind, monkeypatch, tmp_path, capsys
+) -> None:
+    """Unavailable archives must not turn every remote work into an acquisition candidate."""
+    root = tmp_path / "unavailable"
+    if root_kind == "file":
+        root.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("FAA_WORKS_DIR", str(root))
+    monkeypatch.delenv("FAA_STAGING_DIR", raising=False)
+
+    def unexpected_fetch(*args):
+        pytest.fail("invalid archive should be rejected before any remote fetch")
+
+    monkeypatch.setattr(cli, "gather", unexpected_fetch)
+    args = ["--artist-qid", "Q5582", "--missing-only"]
+    if explicit:
+        args.extend(["--staging-dir", str(root)])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(args)
+    assert exc.value.code == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert str(root) in output.err
+    assert "--missing-only requires an existing sidecar directory" in output.err
+    assert "--staging-dir" in output.err
+    assert "FAA_WORKS_DIR, then FAA_STAGING_DIR" in output.err
 
 
 def test_load_held_reads_qids_and_titles(tmp_path) -> None:

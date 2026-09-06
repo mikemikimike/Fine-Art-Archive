@@ -22,13 +22,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
+
+from scripts._paths import default_works_dir  # noqa: E402
 
 from fine_art_archive.known_works.fetchers import (  # noqa: E402
     KnownWork,
@@ -127,22 +129,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--staging-dir",
         type=Path,
-        default=(
-            Path(os.environ["FAA_STAGING_DIR"]).expanduser()
-            if os.environ.get("FAA_STAGING_DIR")
-            else None
+        default=default_works_dir(),
+        help=(
+            "archive sidecar root for --missing-only "
+            "(default: $FAA_WORKS_DIR, then $FAA_STAGING_DIR, then the canonical archive)"
         ),
-        help="archive sidecar root for --missing-only (default: $FAA_STAGING_DIR)",
     )
     args = parser.parse_args(argv)
 
     if not args.artist_qid and not args.artist_name:
         parser.error("provide --artist-qid and/or --artist-name")
+    if args.missing_only and (args.staging_dir is None or not args.staging_dir.is_dir()):
+        parser.error(
+            f"--missing-only requires an existing sidecar directory; got {args.staging_dir!s}. "
+            "Set --staging-dir explicitly or configure FAA_WORKS_DIR, then FAA_STAGING_DIR "
+            "(otherwise the canonical archive is used)."
+        )
 
     works = gather(args.artist_qid, args.artist_name)
     if args.missing_only:
-        if args.staging_dir is None:
-            parser.error("--missing-only needs --staging-dir or $FAA_STAGING_DIR")
         held_qids, held_titles = load_held(args.staging_dir)
         works = [w for w in works if not is_held(w, held_qids, held_titles)]
 
