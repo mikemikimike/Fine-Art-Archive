@@ -118,7 +118,7 @@ def _row(work_id: str, meta: dict[str, Any]) -> dict[str, str]:
         "title": _text(meta.get("title")),
         "artist_name": _text(artist_name),
         "artist_wikidata_q": store.artist_qid(meta) or "",
-        "year": _text(meta.get("year")),
+        "year": _text(meta.get("year")) or _text(meta.get("year_min")),
         "medium": _text(meta.get("medium")),
         "n_variants": str(len(variants) if isinstance(variants, list) else 0),
     }
